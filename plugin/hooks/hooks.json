@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "crisper analyze current --format json --include-messages > /tmp/crisper_precompact_signal.json 2>/dev/null && echo 'CRISPER_SIGNAL' || true"
+          }
+        ]
+      }
+    ]
+  }
+}

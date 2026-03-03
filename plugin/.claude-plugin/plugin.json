@@ -1,0 +1,12 @@
+{
+  "name": "crisper",
+  "version": "0.2.0",
+  "description": "Crisper Context — scientifically optimal context engineering for Claude Code. Restructure sessions into the research-proven 5-section layout for maximum model performance.",
+  "author": {
+    "name": "Ruya AI",
+    "url": "https://github.com/Ruya-AI"
+  },
+  "repository": "https://github.com/Ruya-AI/crisper",
+  "license": "MIT",
+  "keywords": ["context", "engineering", "restructuring", "compaction", "optimization"]
+}

@@ -1,89 +1,94 @@
-"""Phase 2: Engineer — use LLM to restructure context into optimal form.
+"""Phase 2: Engineer — prepare context for subagent restructuring.
 
-One API call. Takes the AnalysisResult from Phase 1 and the raw session,
-produces a restructured JSONL with the 5-section optimal layout.
+This module does NOT call an LLM. It:
+1. Formats AnalysisResult into structured text the subagent consumes
+2. Separates messages into restructurable and sacred (recent) sets
+3. Provides the 5-section template and rules
 
-Research grounding:
-- Factory.ai: Structured summaries score 3.70 vs 3.44 (Anthropic) on retention
-- JetBrains: 10-turn recent window is optimal
-- Manus AI: Stable prefix for KV-cache, objectives in recency window
-- Liu et al.: Critical info at beginning + end (lost-in-the-middle)
-- Chroma: Topic-based > chronological for compressed history
+The LLM intelligence comes from the Claude Code subagent spawned by SKILL.md.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
-from .types import AnalysisResult, EngineerResult, QualityScore
+from .types import AnalysisResult, TopicSegment, MessageScore
+from .analyzer import _load_messages
 
 
-ENGINEER_SYSTEM_PROMPT = """\
-You are a context engineering specialist. Your job is to restructure a Claude Code \
-conversation into the scientifically optimal format for maximum model performance.
+# ─── Templates ───────────────────────────────────────────────────────────────
 
-You will receive:
-1. An analysis of the session (extracted decisions, file changes, errors, references, etc.)
-2. The raw conversation messages
+FIVE_SECTION_TEMPLATE = """\
+Section 1: SYSTEM STATE (position: TOP — stable, KV-cacheable)
+  - Project architecture
+  - Tool configurations
+  - User preferences and constraints
 
-Produce a restructured conversation that follows this exact 5-section layout:
+Section 2: STRUCTURED STATE (position: NEAR TOP — reference material)
+  - Session intent / original requirements
+  - File modifications (every path + what changed)
+  - Decisions made (every decision + rationale + what was rejected)
+  - Current state (deployed, pending, blocked)
 
-## Section 1: System State (top — stable, KV-cacheable)
-- Project architecture overview
-- Key constraints and user preferences
-- Tool configurations mentioned
+Section 3: COMPRESSED HISTORY (position: MIDDLE — by topic, NOT chronological)
+  - Group by topic/task
+  - Preserve failed attempts with why they failed
+  - Preserve causal chains: error → investigation → root cause → fix
+  - Keep URLs, drop fetched content
+  - Error messages verbatim, surrounding discussion compressed
 
-## Section 2: Structured State (Factory's 4 anchors)
-- **Session Intent**: What the user is trying to accomplish
-- **File Modifications**: Every file path created/modified with what changed
-- **Decisions Made**: Every decision with rationale (keep "why", not just "what")
-- **Current State**: What's deployed, pending, blocked
+Section 4: RECENT TURNS (position: NEAR END — sacred, verbatim)
+  - Last N turns exactly as they appeared
+  - Full tool_use/tool_result pairs intact
+  - No modification
 
-## Section 3: Compressed History (by topic, NOT chronological)
-- Group related exchanges by topic/task
-- Preserve failed attempts ("wrong turns") — these prevent repetition
-- Preserve causal chains: error → investigation → root cause → fix
-- Keep URLs/links, drop fetched content (reversible)
-- Keep error messages verbatim, compress surrounding discussion
-
-## Section 4: Recent Turns (verbatim, untouched)
-- Last N turns exactly as they appeared — do NOT modify these
-- Include full tool_use/tool_result pairs
-
-## Section 5: Objectives + Next Steps (end — recency attention window)
-- Current task + acceptance criteria
-- Agent team state if active
-- Pending items, blockers, next actions
-
-CRITICAL RULES:
-- Every decision from the analysis MUST appear in the output
-- Every file path from the analysis MUST appear in the output
-- Every URL/reference MUST be preserved
-- Failed attempts MUST be preserved (models learn from wrong turns)
-- Recent turns are SACRED — copy them verbatim, byte-for-byte
-- Output valid JSONL — each line is a valid JSON message
-- Maintain uuid/parentUuid chain integrity
-- NEVER invent information not present in the original
+Section 5: OBJECTIVES + NEXT STEPS (position: VERY END — highest attention)
+  - Current task + acceptance criteria
+  - Agent team state (if active)
+  - Pending items, blockers, next actions
 """
 
 
-def build_engineer_prompt(analysis: AnalysisResult, messages_json: str) -> str:
-    """Build the prompt for the LLM engineering call."""
+RESTRUCTURING_RULES = """\
+CRITICAL RULES:
+1. Every decision from the analysis MUST appear in Section 2
+2. Every file path from the analysis MUST appear in Section 2
+3. Every URL/reference MUST be preserved in Section 2 or 3
+4. Failed attempts MUST be preserved in Section 3
+5. Recent turns are SACRED — Section 4 is byte-identical to original
+6. Output MUST be valid JSONL — each line is a valid JSON message object
+7. uuid/parentUuid chain MUST stay valid
+8. All tool_use blocks MUST have matching tool_result blocks
+9. NEVER invent information not in the original session
+10. Output token count MUST be less than input token count
+"""
+
+
+# ─── Formatting ──────────────────────────────────────────────────────────────
+
+def build_analysis_text(
+    analysis: AnalysisResult,
+    topics: list[TopicSegment] | None = None,
+    scores: list[MessageScore] | None = None,
+) -> str:
+    """Format AnalysisResult as structured text for the subagent."""
     parts = []
     parts.append("# Session Analysis\n")
-    parts.append(f"**Intent**: {analysis.session_intent}\n")
-    parts.append(f"**Model**: {analysis.model}")
+    parts.append(f"**Session ID**: {analysis.session_id}")
+    parts.append(f"**Intent**: {analysis.session_intent}")
+    parts.append(f"**Model**: {analysis.model or 'unknown'}")
     parts.append(f"**Tokens**: {analysis.token_count:,}")
     parts.append(f"**Total turns**: {analysis.total_turns}")
-    parts.append(f"**Recent turns start at**: message {analysis.recent_turn_start}")
+    parts.append(f"**Recent turns start at**: message index {analysis.recent_turn_start}")
     parts.append("")
 
     if analysis.decisions:
         parts.append(f"## Decisions ({len(analysis.decisions)})")
         for d in analysis.decisions:
             parts.append(f"- [turn {d.turn_index}] {d.summary}")
+            if d.rationale:
+                parts.append(f"  Rationale: {d.rationale}")
         parts.append("")
 
     if analysis.file_changes:
@@ -93,9 +98,13 @@ def build_engineer_prompt(analysis: AnalysisResult, messages_json: str) -> str:
         parts.append("")
 
     if analysis.error_chains:
-        parts.append(f"## Errors ({len(analysis.error_chains)})")
-        for ec in analysis.error_chains[:20]:
+        parts.append(f"## Error Chains ({len(analysis.error_chains)})")
+        for ec in analysis.error_chains:
             parts.append(f"- [turn {ec.turn_index}] {ec.error}")
+            if ec.cause:
+                parts.append(f"  Cause: {ec.cause}")
+            if ec.fix:
+                parts.append(f"  Fix: {ec.fix}")
         parts.append("")
 
     if analysis.references:
@@ -106,6 +115,23 @@ def build_engineer_prompt(analysis: AnalysisResult, messages_json: str) -> str:
                 parts.append(f"  Context: {ref.context[:100]}")
         parts.append("")
 
+    if analysis.failed_attempts:
+        parts.append(f"## Failed Attempts ({len(analysis.failed_attempts)})")
+        for fa in analysis.failed_attempts:
+            parts.append(f"- [turn {fa.turn_index}] {fa.what}")
+            if fa.why_failed:
+                parts.append(f"  Why: {fa.why_failed}")
+        parts.append("")
+
+    if topics:
+        parts.append(f"## Topics ({len(topics)})")
+        for t in topics:
+            parts.append(f"- {t.topic} (turns {t.start_index}-{t.end_index}, {len(t.message_indices)} messages)")
+        parts.append("")
+
+    if analysis.agent_team_state:
+        parts.append(f"## Agent Team State\n{analysis.agent_team_state}\n")
+
     if analysis.current_task:
         parts.append(f"## Current Task\n{analysis.current_task}\n")
 
@@ -115,77 +141,65 @@ def build_engineer_prompt(analysis: AnalysisResult, messages_json: str) -> str:
             parts.append(f"- {step}")
         parts.append("")
 
-    parts.append("# Raw Conversation Messages\n")
-    parts.append(messages_json)
-
     return "\n".join(parts)
 
 
-def engineer_context(
-    analysis: AnalysisResult,
-    session_path: Path,
-    model: str = "claude-sonnet-4-6",
-    api_key: str | None = None,
-    dry_run: bool = False,
-) -> EngineerResult | str:
-    """Phase 2: Call LLM to restructure context.
+def split_messages(path: Path, recent_turn_start: int) -> tuple[str, str]:
+    """Split session into restructurable and sacred portions.
 
-    Args:
-        analysis: Result from Phase 1 (analyzer).
-        session_path: Path to the JSONL session file.
-        model: LLM model to use for restructuring (default: Sonnet for speed/cost).
-        api_key: Anthropic API key. Falls back to ANTHROPIC_API_KEY or CRISPER_API_KEY env.
-        dry_run: If True, return the prompt without calling the API.
-
-    Returns:
-        EngineerResult on success, or the prompt string if dry_run=True.
+    Returns (older_messages_jsonl, sacred_messages_jsonl).
     """
-    # Resolve API key
-    key = api_key or os.environ.get("CRISPER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-    if not key and not dry_run:
-        return "Error: No API key. Set CRISPER_API_KEY or ANTHROPIC_API_KEY environment variable."
+    messages = _load_messages(path)
 
-    # Read raw messages
-    raw = session_path.read_text(encoding="utf-8")
+    older_lines = []
+    sacred_lines = []
 
-    # Build prompt
-    prompt = build_engineer_prompt(analysis, raw)
+    for pos, (idx, msg) in enumerate(messages):
+        line = json.dumps(msg, separators=(",", ":"))
+        if pos >= recent_turn_start and recent_turn_start > 0:
+            sacred_lines.append(line)
+        else:
+            older_lines.append(line)
 
-    if dry_run:
-        return prompt
+    return "\n".join(older_lines), "\n".join(sacred_lines)
 
-    # Call Anthropic API
-    import anthropic
 
-    client = anthropic.Anthropic(api_key=key)
-
-    response = client.messages.create(
-        model=model,
-        max_tokens=16384,
-        system=ENGINEER_SYSTEM_PROMPT,
-        messages=[
-            {"role": "user", "content": prompt},
+def build_full_analysis_json(analysis: AnalysisResult) -> str:
+    """Serialize AnalysisResult to JSON for CLI output / subagent consumption."""
+    return json.dumps({
+        "session_id": analysis.session_id,
+        "session_intent": analysis.session_intent,
+        "model": analysis.model,
+        "token_count": analysis.token_count,
+        "context_window": analysis.context_window,
+        "total_turns": analysis.total_turns,
+        "recent_turn_start": analysis.recent_turn_start,
+        "current_task": analysis.current_task,
+        "current_state": analysis.current_state,
+        "agent_team_state": analysis.agent_team_state,
+        "decisions": [
+            {"summary": d.summary, "rationale": d.rationale, "turn": d.turn_index}
+            for d in analysis.decisions
         ],
-    )
-
-    # Extract the restructured content
-    output_text = ""
-    for block in response.content:
-        if block.type == "text":
-            output_text += block.text
-
-    # Calculate cost
-    input_tokens = response.usage.input_tokens
-    output_tokens = response.usage.output_tokens
-    # Sonnet 4.6 pricing: $3/M input, $15/M output
-    cost = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000)
-
-    return EngineerResult(
-        original_tokens=analysis.token_count,
-        engineered_tokens=input_tokens,  # approximate
-        quality_before=QualityScore(0, 0, 0, 0, 0, 0),  # TODO: implement scoring
-        quality_after=QualityScore(0, 0, 0, 0, 0, 0),
-        sections_generated=5,
-        llm_model_used=model,
-        llm_cost_usd=round(cost, 4),
-    )
+        "file_changes": [
+            {"path": fc.path, "action": fc.action, "turn": fc.turn_index}
+            for fc in analysis.file_changes
+        ],
+        "error_chains": [
+            {"error": ec.error, "cause": ec.cause, "fix": ec.fix, "turn": ec.turn_index}
+            for ec in analysis.error_chains
+        ],
+        "references": [
+            {"url": r.url, "context": r.context}
+            for r in analysis.references
+        ],
+        "failed_attempts": [
+            {"what": fa.what, "why_failed": fa.why_failed, "turn": fa.turn_index}
+            for fa in analysis.failed_attempts
+        ],
+        "topics": [
+            {"topic": t.topic, "start": t.start_index, "end": t.end_index, "keywords": t.keywords}
+            for t in analysis.topics
+        ],
+        "next_steps": analysis.next_steps,
+    }, indent=2)
