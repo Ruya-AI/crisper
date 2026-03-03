@@ -171,6 +171,74 @@ def cmd_engineer(args):
     print()
 
 
+def cmd_eval_prepare(args):
+    """Prepare CE-Bench workspace for a session."""
+    from .eval.runner import prepare_full_benchmark
+    from .session import resolve_session
+
+    path = resolve_session(args.session)
+    workspace = Path(args.workspace) if args.workspace else None
+    ws = prepare_full_benchmark(path, workspace)
+    print(f"  Workspace: {ws}")
+
+
+def cmd_eval_ground_truth(args):
+    """Generate ground truth prompt (after questions.json exists)."""
+    from .eval.runner import step3_generate_ground_truth_prompt
+
+    ws = Path(args.workspace)
+    prompt_path = step3_generate_ground_truth_prompt(ws)
+    if prompt_path:
+        print(f"  Ground truth prompt: {prompt_path.name}")
+    else:
+        print("  ERROR: questions.json not found. Run question generation first.", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_eval_test(args):
+    """Generate test prompts for all conditions."""
+    from .eval.runner import step4_generate_test_prompts
+
+    ws = Path(args.workspace)
+    prompts = step4_generate_test_prompts(ws)
+    for cid, path in prompts.items():
+        print(f"  Condition {cid}: {path.name}")
+    if not prompts:
+        print("  ERROR: questions.json or condition files not found.", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_eval_judge(args):
+    """Generate judge prompts for all conditions."""
+    from .eval.runner import step5_generate_judge_prompts
+
+    ws = Path(args.workspace)
+    prompts = step5_generate_judge_prompts(ws)
+    for cid, path in prompts.items():
+        print(f"  Condition {cid}: {path.name}")
+    if not prompts:
+        print("  ERROR: ground_truth.json or answers files not found.", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_eval_aggregate(args):
+    """Aggregate judge scores into final results."""
+    from .eval.runner import step6_aggregate
+
+    ws = Path(args.workspace)
+    results = step6_aggregate(ws)
+    print(f"  Aggregated {len(results.get('conditions', {}))} conditions")
+    print(f"  Results: {ws / 'results.json'}")
+
+
+def cmd_eval_results(args):
+    """Show benchmark results."""
+    from .eval.runner import format_results
+
+    ws = Path(args.workspace)
+    print(format_results(ws))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="crisper",
@@ -209,6 +277,26 @@ def build_parser() -> argparse.ArgumentParser:
     # engineer (points to skill)
     sub.add_parser("engineer", help="Use /crisper:engineer skill instead")
 
+    # eval commands
+    p = sub.add_parser("eval-prepare", help="Prepare CE-Bench workspace")
+    p.add_argument("session", help="Session ID, path, or 'current'")
+    p.add_argument("--workspace", help="Custom workspace path")
+
+    p = sub.add_parser("eval-ground-truth", help="Generate ground truth prompt")
+    p.add_argument("workspace", help="CE-Bench workspace path")
+
+    p = sub.add_parser("eval-test", help="Generate test prompts for all conditions")
+    p.add_argument("workspace", help="CE-Bench workspace path")
+
+    p = sub.add_parser("eval-judge", help="Generate judge prompts")
+    p.add_argument("workspace", help="CE-Bench workspace path")
+
+    p = sub.add_parser("eval-aggregate", help="Aggregate judge scores")
+    p.add_argument("workspace", help="CE-Bench workspace path")
+
+    p = sub.add_parser("eval-results", help="Show benchmark results")
+    p.add_argument("workspace", help="CE-Bench workspace path")
+
     return parser
 
 
@@ -226,6 +314,12 @@ def main():
         "validate": cmd_validate,
         "write": cmd_write,
         "engineer": cmd_engineer,
+        "eval-prepare": cmd_eval_prepare,
+        "eval-ground-truth": cmd_eval_ground_truth,
+        "eval-test": cmd_eval_test,
+        "eval-judge": cmd_eval_judge,
+        "eval-aggregate": cmd_eval_aggregate,
+        "eval-results": cmd_eval_results,
     }
 
     commands[args.command](args)
