@@ -30,7 +30,7 @@ from .analyzer import analyze_session, _load_messages
 from .writer import create_backup, atomic_write
 
 # Gene section markers — these identify cultivated content
-GENE_MARKER = "[CRISPER GENE"
+GENE_MARKER = "gene:"  # Matches "[gene:v1]" in user messages
 GENE_VERSION = "v1"
 SECTION_MARKERS = [
     "System Identity",
@@ -76,6 +76,9 @@ def find_gene_boundary(session_path: Path) -> int:
 
     Returns the line number of the first non-gene message.
     If not cultivated, returns 0 (everything is raw).
+
+    Gene sections come in user/assistant pairs. The user message has the
+    gene: marker, the assistant message has the content. Both are gene lines.
     """
     if not is_cultivated(session_path):
         return 0
@@ -83,32 +86,45 @@ def find_gene_boundary(session_path: Path) -> int:
     with open(session_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if not line:
-            continue
+    def _has_marker(line_text: str) -> bool:
         try:
-            msg = json.loads(line)
+            msg = json.loads(line_text)
         except json.JSONDecodeError:
-            continue
-
-        # Gene sections are user/assistant pairs with GENE markers
+            return False
         content = msg.get("message", {}).get("content", "")
-        has_marker = False
         if isinstance(content, str):
-            has_marker = GENE_MARKER in content or any(m in content for m in SECTION_MARKERS)
-        elif isinstance(content, list):
+            return GENE_MARKER in content or any(m in content for m in SECTION_MARKERS)
+        if isinstance(content, list):
             for block in content:
                 if isinstance(block, dict):
                     text = block.get("text", "")
                     if isinstance(text, str) and (GENE_MARKER in text or any(m in text for m in SECTION_MARKERS)):
-                        has_marker = True
-                        break
+                        return True
+        return False
 
-        if not has_marker and i > 0:
-            return i
+    # Find the last consecutive line that's part of the gene
+    # Gene = user/assistant pairs where the USER has the marker
+    # The assistant response after a marked user is also gene
+    last_gene_line = -1
+    prev_was_marker = False
 
-    return len(lines)
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            continue
+
+        if _has_marker(line):
+            last_gene_line = i
+            prev_was_marker = True
+        elif prev_was_marker:
+            # Assistant response after a gene user message — also gene
+            last_gene_line = i
+            prev_was_marker = False
+        else:
+            # Neither marker nor response to marker — this is raw tail
+            break
+
+    return last_gene_line + 1 if last_gene_line >= 0 else 0
 
 
 def get_archive_path(session_path: Path) -> Path:
