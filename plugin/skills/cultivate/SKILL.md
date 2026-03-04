@@ -55,7 +55,7 @@ AskUserQuestion: "Cultivate this session's context?"
 - "Yes, cultivate" — proceeds
 - "Show analysis first" — show what was extracted before proceeding
 
-## Step 3: Spawn cultivation subagent
+## Step 3: Detect changes and snipe
 
 Write the preparation data to `/tmp/crisper_cultivation.json`:
 
@@ -63,7 +63,22 @@ Write the preparation data to `/tmp/crisper_cultivation.json`:
 crisper cultivate-prepare current --format json > /tmp/crisper_cultivation.json
 ```
 
-Then spawn a **Task** subagent (run_in_background=false) with this prompt:
+**CRITICAL: Do NOT rewrite the entire gene. Detect what changed and surgically update ONLY the affected sections.** Untouched sections stay byte-identical — zero risk of context collapse.
+
+Read the preparation data. Analyze the raw tail to detect changes:
+- New decisions → snipe: live_state, dependencies, objectives
+- New files created/modified → snipe: live_state.file_map
+- Errors occurred → snipe: failure_log, live_state.feedback
+- Subgoal completed → snipe: subgoal_tree
+- Decision superseded → snipe: live_state (remove old + add new), failure_log (add abandoned)
+- Phase shifted → snipe: restructure emphasis across affected sections
+- Nothing structural → just archive the tail, no section changes
+
+For **first cultivation** (no existing gene): spawn a subagent to produce ALL sections (full bootstrap). For **subsequent cultivations**: only snipe affected sections.
+
+### First cultivation (bootstrap): spawn subagent for all sections
+
+Use **Task** (run_in_background=false) with this prompt:
 
 ---
 
@@ -309,6 +324,39 @@ python3 -c "import json; d=json.load(open('/tmp/crisper_gene_sections.json')); p
 ```
 
 ---
+
+### Subsequent cultivations (snipe mode): targeted section updates
+
+For each affected section, spawn a focused **Task** subagent (or handle inline if the change is simple):
+
+**Snipe prompt template:**
+```
+You are surgically updating ONE section of a cultivated context gene.
+
+CURRENT SECTION CONTENT:
+[paste the current content of this specific section]
+
+WHAT CHANGED (from new turns):
+[describe the specific change: new decision, new error, file modified, etc.]
+
+SECTION RULES:
+[paste the section-specific rules from above]
+
+INSTRUCTIONS:
+- Update this section to reflect the change
+- ENRICH: add rationale, dependencies, cross-references
+- Do NOT remove existing content unless it's explicitly superseded
+- Output ONLY the updated section content (nothing else)
+```
+
+For simple changes (test result updated, file modified), you can update inline without spawning a subagent — just edit the section content directly.
+
+After all snipes complete, write the updated sections to `/tmp/crisper_gene_sections.json`. Include ALL sections — unchanged ones with their original content, changed ones with updated content.
+
+**Anti-collapse verification:**
+- Count facts (decisions, files, errors) before and after each snipe
+- If a count DECREASED without an explicit deletion, something was lost — redo the snipe
+- Sections not in the change map should be byte-identical to before
 
 ## Step 4: Write the gene
 
