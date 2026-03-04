@@ -100,7 +100,7 @@ COMPACT_RUBRIC = {
 # ─── CE-Bench v2: GoF (output quality improvement) ───────────────────────────
 
 GOF_RUBRIC = {
-    "description": "Measures whether continuous cultivation improves the model's output quality on subsequent turns",
+    "description": "Measures whether continuous cultivation produces better model output than raw conversation — through enrichment, linking, anticipation, and interference resolution",
     "dimensions": [
         {
             "id": "instruction_adherence",
@@ -182,6 +182,17 @@ GOF_RUBRIC = {
             "criteria": [
                 {"id": "breadcrumb_usage", "desc": "When the model needs detail that was archived, does it use breadcrumbs to retrieve it rather than hallucinating?"},
                 {"id": "archive_accuracy", "desc": "Are the retrieved details correct and relevant?"},
+            ],
+        },
+        {
+            "id": "enrichment_quality",
+            "name": "Enrichment Quality",
+            "weight": 1.5,
+            "source": "CE-Bench v2",
+            "criteria": [
+                {"id": "rationale_added", "desc": "Were decisions enriched with rationale, alternatives, and dependencies — even if the raw conversation was casual? A cultivated gene should contain MORE insight than the conversation."},
+                {"id": "cross_references", "desc": "Are related decisions, files, and topics linked? Does the context show dependency chains?"},
+                {"id": "anticipation", "desc": "Does the context proactively surface information relevant to likely next steps? Does it anticipate what the model will need?"},
             ],
         },
     ],

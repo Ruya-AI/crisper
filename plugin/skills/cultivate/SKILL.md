@@ -7,7 +7,16 @@ allowed-tools: Bash(crisper *), Task, Read, Write, AskUserQuestion
 
 You are running **Crisper GoF — Gain of Function** cultivation.
 
-This is NOT compression. This is context architecture — restructuring what the model sees so every subsequent turn benefits from cleaner, more accessible information.
+This is NOT compression. The goal is NOT to make context smaller. The goal is to make context BETTER — so the next turn's output is higher quality than it would have been with the raw conversation.
+
+The cultivated gene should be **richer, more explicit, better linked, and more useful** than the messy transcript it replaces. If that means the gene is LARGER than the raw tail it absorbed — that's correct. Quality per token matters, not token count.
+
+What cultivation does:
+- **Enriches**: "yeah let's go with JWT" → full decision record with rationale, alternatives, dependencies, references
+- **Links**: connects related decisions, shows dependency chains, cross-references files
+- **Researches**: if a decision lacks rationale, infer and document why it was made
+- **Anticipates**: if we're about to implement X, include the architecture context that makes X easier
+- **Resolves**: contradictions, outdated state, superseded decisions — one clean truth per topic
 
 ## Why This Works (grounding your decisions)
 
@@ -17,7 +26,7 @@ Seven research-backed principles drive every cultivation decision:
 
 2. **Attention has a cliff.** There's a sharp phase transition where context stops working — not a gradual decline (Huang et al., 2025). Cultivate BEFORE the cliff, not after.
 
-3. **Only 20% of tokens drive reasoning.** The other 80% (boilerplate, progress ticks, stale reads) actively steals attention from what matters (MI Reasoning Dynamics). Your job: identify and promote the 20%.
+3. **Only 20% of tokens drive reasoning.** The other 80% (boilerplate, progress ticks, stale reads) actively steals attention from what matters (MI Reasoning Dynamics). Your job: identify the 20% and ENRICH it — add rationale, dependencies, cross-references. Remove the 80% noise. The result may be similar in size but dramatically higher in quality.
 
 4. **Explicit state survives; implicit state dies.** "We discussed using JWT somewhere" will be lost. "Decision: JWT auth (rationale: X, supersedes: sessions)" persists through any context event. Your job: crystallize every implicit decision into explicit structured state.
 
@@ -91,31 +100,46 @@ RULES:
 
 Explicit state declarations that the model can reliably retrieve. Research shows explicit state ("Decision: JWT auth") survives all context events while implicit state ("we talked about JWT in turn 14") is lost (Anthropic, Manus, TME).
 
-WRITE in explicit structured format:
+WRITE in explicit structured format — and ENRICH every entry:
 ```
-## Active Decisions (current truth only)
-- Decision: [what] (rationale: [why], supersedes: [what it replaced], turn: [N])
-- Decision: ...
+## Active Decisions (current truth only — enriched)
+- Decision: [what]
+  Rationale: [why — if the conversation didn't state why, INFER from context]
+  Alternatives rejected: [what was considered and dismissed]
+  Supersedes: [what it replaced, if anything]
+  Dependencies: [what other decisions/files depend on this]
+  Impact: [what parts of the codebase this affects]
+  Turn: [N]
 
-## File State Map (what exists NOW, not history)
-- [path]: [action] at turn [N], current purpose: [what it does]
-- ...
+## File State Map (what exists NOW — enriched with purpose)
+- [path]: [created/modified] at turn [N]
+  Purpose: [what this file does in the architecture]
+  Key contents: [main functions/classes/exports]
+  Dependencies: [what it imports, what imports it]
+  Last change: [what was changed and why]
 
 ## Dependency Graph
 - [Decision X] depends on [Decision Y] — if Y changes, X needs review
-- ...
+- [File A] imports from [File B] — changes to B affect A
+- [Feature X] requires [Feature Y] to be complete first
 
 ## External Feedback (most recent)
-- Last test result: [pass/fail, details]
-- Last build: [success/failure]
+- Last test result: [pass/fail, count, details]
+- Last build: [success/failure, errors if any]
 - Last lint: [clean/warnings]
+
+## Anticipated Needs (proactive)
+- If the next task is [X], the model will need: [relevant architecture context, file paths, decisions]
+- Known risks: [things that could go wrong based on current state]
 ```
 
 RULES:
+- ENRICH every decision with rationale, alternatives, and dependencies — even if the conversation was casual about it
 - When a decision is superseded, REMOVE the old one. Don't accumulate contradictions.
 - If Decision Y is revised and Decision X depends on it, flag X for review.
-- File state is CURRENT state, not history. "analyzer.py: created turn 5, modified turn 15" not "analyzer.py was read at turn 3, then written at turn 5, then read again..."
-- External feedback: only the MOST RECENT result. Not a log.
+- File state includes PURPOSE and KEY CONTENTS — not just "it exists"
+- Add an "Anticipated Needs" section that proactively surfaces context for likely next steps
+- The live state should be so good that the model never needs to re-read a file or re-ask a question
 
 ### 3. `failure_log` — POSITION: UPPER-MIDDLE (first-class, not buried)
 
@@ -165,22 +189,29 @@ This goes in the middle deliberately. Liu et al. (TACL 2024) showed 24.6pp accur
 
 Chroma Research (2025) found shuffled text outperforms coherent narrative because coherent text creates stronger recency bias. Group by TOPIC, not chronology.
 
-WRITE:
+WRITE — distill and enrich, don't just summarize:
 ```
 ## Topic: [name]
-[Compressed summary of what happened]
-[archive:LINE-LINE for full detail]
+What happened: [distilled narrative — not "we discussed X" but "X was implemented because Y"]
+Key outcome: [the concrete result]
+Lessons learned: [what this taught us that applies going forward]
+Causal chain: [if errors were involved: error → investigation → root cause → fix]
+References: [URLs, docs consulted]
+[archive:LINE-LINE for full raw discussion]
 
 ## Topic: [name]
 ...
 ```
 
 RULES:
-- Topic-based, NOT chronological
-- Include archive references (breadcrumbs) for anything compressed
-- Preserve error messages VERBATIM (don't summarize error text)
+- Topic-based, NOT chronological (Chroma: shuffled > coherent)
+- DISTILL, don't summarize — extract the insight, not the process
+- Include "Lessons learned" — what applies going forward, not just what happened
+- Causal chains must be COMPLETE: error → what was investigated → root cause → fix applied
+- Preserve error messages VERBATIM (summaries smooth over severity)
 - Keep URLs/links inline, drop fetched content
-- If a topic is fully resolved and captured in live_state, compress to one line + breadcrumb
+- If a topic is fully resolved AND its lessons are captured in live_state, compress to one line + breadcrumb
+- Add cross-references: "Related: see [other topic] for the authentication decision that affected this"
 
 ### 6. `breadcrumbs` — POSITION: AFTER HISTORY
 
@@ -203,21 +234,33 @@ Or:  crisper retrieve current --query "keyword"
 
 This goes LAST because of the recency attention effect — the model attends most strongly to the end of context. Manus AI's todo.md pattern pushes objectives into this high-attention zone deliberately.
 
-WRITE:
+WRITE — forward-looking, actionable, enriched with what the model needs to execute:
 ```
 ## Current Task
-[What we're working on right now + acceptance criteria]
+What: [precise description]
+Acceptance criteria: [when is this done?]
+Approach: [how we're doing it — the plan]
+Context needed: [files, decisions, and architecture the model needs to have in mind]
+Risks: [what could go wrong, based on past failures and current state]
 
-## Next Steps
-1. [Immediate next action]
-2. [After that]
-3. [Then]
+## Next Steps (prioritized)
+1. [Immediate] — what to do, which files to touch, expected outcome
+2. [After that] — depends on step 1 completing
+3. [Then] — ...
 
 ## Blockers
-- [Anything blocking progress]
+- [What's blocking progress and what would unblock it]
 
 ## Agent Team State (if active)
-- [Teammate roles and status]
+- [Teammate roles, current task, status]
+- [Coordination: who needs what from whom]
+
+## Proactive Context
+[Information the model will likely need in the next few turns:
+ - Architecture decisions relevant to the current task
+ - File dependencies that will be affected
+ - Past failures in similar work that should be avoided
+ - Related decisions that constrain the approach]
 ```
 
 ## Phase Detection
