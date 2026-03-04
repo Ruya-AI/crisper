@@ -161,12 +161,21 @@ def build_gene_jsonl(
         ("Breadcrumbs", sections.get("breadcrumbs", "")),
     ]
 
-    for section_name, content in section_order:
+    for i, (section_name, content) in enumerate(section_order):
         if not content:
             content = "(empty)"
 
         user_uuid = str(uuid_mod.uuid4())
         asst_uuid = str(uuid_mod.uuid4())
+
+        # Attention sink: first message starts with high-information project name
+        # StreamingLLM (ICLR 2024): first 4 tokens get disproportionate attention
+        if i == 0:
+            # Extract project name from content for the attention anchor
+            project_hint = content.split("\n")[0][:80] if content else "Project Context"
+            user_content = f"{project_hint} — {section_name} [gene:{GENE_VERSION}]"
+        else:
+            user_content = f"[gene:{GENE_VERSION}] {section_name}"
 
         user_msg = {
             "type": "user",
@@ -178,7 +187,7 @@ def build_gene_jsonl(
             "userType": "external",
             "message": {
                 "role": "user",
-                "content": f"[CRISPER GENE {GENE_VERSION} — {section_name}]",
+                "content": user_content,
             },
         }
 

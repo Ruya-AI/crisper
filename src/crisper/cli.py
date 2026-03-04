@@ -236,6 +236,47 @@ def cmd_cultivate_write(args):
         sys.exit(1)
 
 
+def cmd_gene_score(args):
+    """Score the quality of a cultivated gene."""
+    from .gene_scorer import score_gene, format_gene_score
+    from .session import resolve_session
+
+    path = resolve_session(args.session)
+    score = score_gene(path)
+
+    if args.format == "json":
+        import dataclasses
+        json.dump(dataclasses.asdict(score), sys.stdout, indent=2)
+        print()
+    else:
+        print(format_gene_score(score))
+
+
+def cmd_feedback(args):
+    """Show or add feedback signals for the gene."""
+    from .monitor import get_feedback_summary, add_signal
+    from .session import resolve_session
+
+    path = resolve_session(args.session)
+
+    if args.add:
+        add_signal(path, args.type or "gap", args.add)
+        print(f"  Signal added: {args.add}")
+    else:
+        summary = get_feedback_summary(path)
+        print(f"\n  GENE FEEDBACK")
+        print(f"  {'=' * 50}")
+        print(f"  Total signals: {summary['total_signals']}")
+        print(f"  Re-reads: {len(summary['rereads'])}")
+        print(f"  Repetitions: {len(summary['repetitions'])}")
+        print(f"  User corrections: {len(summary['user_corrections'])}")
+        if summary['suggestions']:
+            print(f"\n  Suggestions:")
+            for s in summary['suggestions']:
+                print(f"    - {s}")
+        print()
+
+
 def cmd_retrieve(args):
     """Retrieve content from the archive."""
     from .archive import retrieve_lines, retrieve_search, retrieve_context, archive_stats
@@ -406,6 +447,17 @@ def build_parser() -> argparse.ArgumentParser:
     # engineer (points to skill)
     sub.add_parser("engineer", help="Use /crisper:engineer skill instead")
 
+    # gene quality score
+    p = sub.add_parser("gene-score", help="Score the quality of a cultivated gene")
+    p.add_argument("session", help="Session ID, path, or 'current'")
+    p.add_argument("--format", choices=["json", "text"], default="text")
+
+    # feedback
+    p = sub.add_parser("feedback", help="View or add gene feedback signals")
+    p.add_argument("session", help="Session ID, path, or 'current'")
+    p.add_argument("--add", help="Add a feedback signal (text description)")
+    p.add_argument("--type", choices=["reread", "repetition", "contradiction", "gap"], help="Signal type (with --add)")
+
     # GoF cultivation
     p = sub.add_parser("cultivate-prepare", help="Prepare cultivation data for subagent")
     p.add_argument("session", help="Session ID, path, or 'current'")
@@ -473,6 +525,8 @@ def main():
         "engineer": cmd_engineer,
         "cultivate-prepare": cmd_cultivate_prepare,
         "cultivate-write": cmd_cultivate_write,
+        "gene-score": cmd_gene_score,
+        "feedback": cmd_feedback,
         "retrieve": cmd_retrieve,
         "eval-run": cmd_eval_run,
         "eval-prepare": cmd_eval_prepare,
