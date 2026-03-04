@@ -1,157 +1,94 @@
 ---
 name: engineer
-description: Restructure the current session context into the scientifically optimal 5-section layout. Spawns a subagent to analyze, restructure, validate, and write.
+description: "Crisper Compact — one-shot restructuring of session context into the research-proven 5-section layout. Use before compaction or when context is too large."
 disable-model-invocation: true
 allowed-tools: Bash(crisper *), Task, Read, Write, AskUserQuestion
 ---
 
-You are activating **Crisper Context** — scientifically optimal context restructuring.
+You are running **Crisper Compact** — one-shot context restructuring.
 
-This restructures your session from raw chronological conversation into a 5-section layout proven by research to maximize model performance (Factory.ai 3.70/5, JetBrains NeurIPS 2025, Liu et al. TACL 2024).
+This is the static version. For continuous cultivation, use `/crisper:cultivate`.
 
-## Step 1: Check for PreCompact signal
+## Research Grounding (inform your restructuring decisions)
 
-```bash
-cat /tmp/crisper_precompact_signal.json 2>/dev/null
-```
+- **Position matters:** Information at the beginning and end of context gets 24.6pp higher accuracy than the middle (Liu et al., TACL 2024). Place critical state at edges.
+- **Structured > unstructured:** Format alone causes up to 40pp accuracy swing. Explicit labels ("Decision:", "File:") outperform prose (Formatting Study 2024).
+- **Topic-based > chronological:** Shuffled text outperforms coherent narrative because coherent text amplifies recency bias (Chroma 2025). Group by topic.
+- **Preserve failures:** Models cannot self-correct without seeing failure context (Huang et al., TACL 2024). Keep wrong turns.
+- **10-turn sacred window:** JetBrains (NeurIPS 2025) found 10 recent turns is the optimal observation window. Don't touch them.
+- **Compression improves output:** Focused 300-token context beats unfocused 113K by 30% (Chroma). Less noise = better reasoning.
 
-If the signal file exists, read it — analysis is already done. Skip to Step 3.
-If not, proceed to Step 2.
-
-## Step 2: Run analysis
+## Step 1: Analyze
 
 ```bash
 crisper analyze current --format json --include-messages --window 10
 ```
 
-Save this JSON output — you will pass it to the subagent.
+## Step 2: Confirm
 
-Present a summary to the user:
-- Session: [name], Model: [model], Tokens: [count]
-- Decisions: N, File changes: N, Errors: N, References: N
-- Topics: N, Failed attempts: N
+Show analysis summary. AskUserQuestion to confirm.
 
-## Step 3: Confirm with user
+## Step 3: Spawn restructuring subagent
 
-Use AskUserQuestion:
-- Question: "Restructure this session into optimal 5-section layout?"
-- Options:
-  1. "Yes, restructure" — "Creates backup, restructures, preserves recent 10 turns verbatim"
-  2. "Dry run" — "Show what would change without modifying anything"
-
-If dry run: show the analysis text and stop.
-
-## Step 4: Spawn restructuring subagent
-
-Use the **Task** tool with these parameters:
-- `subagent_type`: "general-purpose"
-- `run_in_background`: false (must complete before we continue)
-
-**Subagent prompt** (paste the analysis JSON where indicated):
+Write analysis to `/tmp/crisper_compact_analysis.json`, then spawn **Task** (run_in_background=false):
 
 ---
 
-You are a context engineering specialist. Restructure this Claude Code session into the optimal 5-section format.
+You are restructuring a Claude Code session into the optimal 5-section layout. The output replaces the raw session — it must be valid JSONL with correct uuid/parentUuid chains.
 
-## The 5-Section Layout
+Read `/tmp/crisper_compact_analysis.json`.
 
-### Section 1: SYSTEM STATE (position: TOP — stable, KV-cacheable)
-Create 1-2 synthetic user/assistant message pairs capturing:
-- Project architecture (inferred from file changes and session intent)
-- Key constraints and user preferences
-- Any tool configurations mentioned
+Produce `/tmp/crisper_restructured.jsonl` with these 5 sections as JSONL message pairs:
 
-### Section 2: STRUCTURED STATE (position: NEAR TOP — reference material)
-Create 1-2 synthetic message pairs with explicit sections:
-- **Session Intent**: [from analysis]
-- **File Modifications**: Every file path + what action (created/modified/deleted)
-- **Decisions Made**: Every decision + rationale + what was rejected
-- **Current State**: What is deployed, pending, blocked
+**Section 1: SYSTEM STATE** (TOP — stable, KV-cacheable)
+Project overview, constraints, tool configs. Stable across turns.
 
-### Section 3: COMPRESSED HISTORY (position: MIDDLE — grouped by topic)
-For each topic from the analysis, create a concise message pair:
-- Summarize exchanges by topic, NOT chronologically
-- Preserve failed attempts: what was tried, why it failed
-- Preserve causal chains: error → cause → fix
-- Keep ALL URLs/references, drop fetched content
-- Error messages verbatim, compress surrounding discussion
+**Section 2: STRUCTURED STATE** (NEAR TOP — reference)
+- Session intent
+- File modifications: EVERY path + action (this is critical — Factory.ai scored only 2.45/5 on artifact trail; we solve this with explicit extraction)
+- Decisions: EVERY decision + rationale + what it superseded
+- Current state: deployed, pending, blocked
 
-### Section 4: RECENT TURNS (position: NEAR END — sacred, verbatim)
-Copy the sacred messages EXACTLY. Do not modify a single character.
-Read them from the `sacred_messages` field in the analysis.
+**Section 3: COMPRESSED HISTORY** (MIDDLE — lowest attention, acceptable)
+Group by topic, NOT chronological. Preserve failed attempts with "why." Preserve causal chains (error→cause→fix). Keep URLs, drop fetched content. Error messages verbatim.
 
-### Section 5: OBJECTIVES + NEXT STEPS (position: VERY END — highest attention)
-Create 1-2 message pairs with:
-- Current task + acceptance criteria
-- Agent team state (if any)
-- Pending items, blockers, next actions
+**Section 4: RECENT TURNS** (NEAR END — sacred)
+Last 10 turns from `sacred_messages`. Copy BYTE-IDENTICAL. Connect parentUuid to last Section 3 message.
 
-## Output Format
+**Section 5: OBJECTIVES + NEXT STEPS** (VERY END — highest attention)
+Current task, acceptance criteria, agent team state, pending items, blockers.
 
-Write the restructured session to `/tmp/crisper_restructured.jsonl`.
+Each section is a user/assistant JSONL pair. Generate UUIDs via `python3 -c "import uuid; print(uuid.uuid4())"`. Chain parentUuid correctly.
 
-Each line must be valid JSON:
-```json
-{"type":"user","uuid":"<new-uuid>","parentUuid":"<prev-uuid>","sessionId":"<session-id>","timestamp":"<iso>","isSidechain":false,"message":{"role":"user","content":"<text>"}}
-```
-
-For synthetic messages, generate new UUIDs (use Python uuid4 via Bash if needed).
-Chain parentUuid: each message's parentUuid = previous message's uuid.
-For Section 4 (sacred turns), keep original uuids but connect the first sacred turn's parentUuid to the last Section 3 message's uuid.
-
-## Critical Rules
-
-1. Every decision from the analysis MUST appear in Section 2
-2. Every file path MUST appear in Section 2
-3. Every URL/reference MUST be preserved
-4. Failed attempts MUST be in Section 3
-5. Section 4 (recent turns) MUST be byte-identical to the sacred_messages
-6. Valid JSONL output
-7. NEVER invent information not in the analysis
-8. Output must be smaller than input
-
-## After Writing
-
-Validate:
-```bash
-crisper validate current /tmp/crisper_restructured.jsonl --format json
-```
-
-If validation fails, fix the issues and re-validate.
-
-Report back: original tokens, restructured tokens, validation result.
-
-## Analysis Data
-
-[PASTE THE ANALYSIS JSON HERE]
+RULES:
+1. Every decision from analysis → Section 2
+2. Every file path → Section 2
+3. Every URL → Section 2 or 3
+4. Failed attempts → Section 3
+5. Section 4 = byte-identical sacred turns
+6. Valid JSONL, valid uuid chain
+7. NEVER invent information
+8. Output smaller than input
 
 ---
 
-## Step 5: Check result
-
-After the subagent completes, verify:
+## Step 4: Validate
 
 ```bash
 crisper validate current /tmp/crisper_restructured.jsonl
 ```
 
-Show the validation summary to the user.
-
-## Step 6: Apply
-
-If validation passed:
+## Step 5: Write
 
 ```bash
 crisper write current /tmp/crisper_restructured.jsonl
 ```
 
-## Step 7: Tell the user
+## Step 6: Tell user
 
-> Context restructured. Backup created automatically.
-> Before: [X] tokens → After: [Y] tokens ([Z]% reduction)
-> To resume with optimized context: exit and run `claude --resume`
+> Restructured. [X] tokens → [Y] tokens.
+> Type `/exit` then `claude --resume`.
 
-Clean up:
 ```bash
-rm -f /tmp/crisper_precompact_signal.json /tmp/crisper_restructured.jsonl
+rm -f /tmp/crisper_compact_analysis.json /tmp/crisper_restructured.jsonl
 ```

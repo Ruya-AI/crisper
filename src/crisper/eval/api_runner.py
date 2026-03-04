@@ -58,12 +58,20 @@ def _read_condition(path: Path) -> str:
 
 # ─── Step 1: Generate questions ──────────────────────────────────────────────
 
-def generate_questions(workspace: Path, api_key: str | None = None, model: str = DEFAULT_MODEL) -> list[dict]:
+def generate_questions(workspace: Path, api_key: str | None = None, model: str = DEFAULT_MODEL, mode: str = "compact") -> list[dict]:
     """Generate 10 test questions from the session analysis."""
     client = _client(api_key)
     analysis = (workspace / "analysis.json").read_text(encoding="utf-8")
 
-    system = "You are a benchmark question generator. Generate specific, detailed questions that test information preservation."
+    from .rubric import build_question_generation_prompt
+    prompt = build_question_generation_prompt(analysis, mode=mode)
+
+    system = (
+        "You are generating benchmark questions for CE-Bench. "
+        "Questions must be SPECIFIC — reference actual file paths, version numbers, error codes, decision rationale. "
+        "Generic questions that any session could answer are worthless. "
+        "Questions should distinguish between approaches that preserve information and those that lose it."
+    )
     user = f"""Given this session analysis, generate exactly 10 test questions.
 
 Each question should target a different dimension and reference SPECIFIC details from the analysis (file paths, version numbers, error messages, URLs).
