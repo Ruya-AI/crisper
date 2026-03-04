@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-03-04T21:28:45.441787",
+  "conditions": {
+    "A": {
+      "dimension_scores": {
+        "accuracy": 2.2,
+        "context_awareness": 2.4,
+        "artifact_trail": 2.1,
+        "completeness": 1.8,
+        "continuity": 2.0,
+        "instruction_following": 2.5,
+        "token_efficiency": 2.1,
+        "cache_friendliness": 1.0
+      },
+      "overall": 2.08,
+      "bytes": 16149264,
+      "compression_pct": 0.0
+    },
+    "B": {
+      "dimension_scores": {
+        "accuracy": 2.3,
+        "context_awareness": 2.0,
+        "artifact_trail": 2.5,
+        "completeness": 1.8,
+        "continuity": 1.9,
+        "instruction_following": 2.5,
+        "token_efficiency": 2.4,
+        "cache_friendliness": 1.0
+      },
+      "overall": 2.13,
+      "bytes": 9512074,
+      "compression_pct": 41.1
+    },
+    "E": {
+      "dimension_scores": {
+        "accuracy": 3.6,
+        "context_awareness": 3.7,
+        "artifact_trail": 3.2,
+        "completeness": 3.0,
+        "continuity": 3.6,
+        "instruction_following": 3.8,
+        "token_efficiency": 3.8,
+        "cache_friendliness": 5.0
+      },
+      "overall": 3.59,
+      "bytes": 123573,
+      "compression_pct": 99.2
+    }
+  }
+}
