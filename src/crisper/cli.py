@@ -172,6 +172,114 @@ def cmd_engineer(args):
     print()
 
 
+def cmd_cultivate_prepare(args):
+    """Prepare cultivation data for the subagent."""
+    from .cultivator import prepare_cultivation_prompt, is_cultivated
+    from .session import resolve_session
+
+    path = resolve_session(args.session)
+    cultivated = is_cultivated(path)
+
+    prep = prepare_cultivation_prompt(path, recent_window=args.window)
+
+    print(f"\n  CRISPER GoF — Cultivation Prep")
+    print(f"  {'=' * 60}")
+    print(f"  Session:     {path.name}")
+    print(f"  Cultivated:  {'yes' if cultivated else 'no (first cultivation)'}")
+    print(f"  Tail lines:  {prep['total_tail_lines']} ({prep['cultivatable_lines']} to absorb, {prep['recent_lines']} sacred)")
+    print(f"  Archive:     {prep['archive_path']}")
+    print()
+
+    if args.format == "json":
+        json.dump(prep, sys.stdout, indent=2)
+        print()
+    else:
+        print(f"  Run /crisper:cultivate to execute cultivation via subagent,")
+        print(f"  or use the API: crisper cultivate-run {path}")
+    print()
+
+
+def cmd_cultivate_write(args):
+    """Write cultivated gene after subagent produces sections."""
+    from .cultivator import cultivate
+    from .session import resolve_session
+
+    path = resolve_session(args.session)
+    sections_path = Path(args.sections)
+
+    if not sections_path.exists():
+        print(f"  ERROR: sections file not found: {sections_path}", file=sys.stderr)
+        sys.exit(1)
+
+    sections = json.loads(sections_path.read_text(encoding="utf-8"))
+
+    # Read recent turns from the prep data
+    recent_turns = []
+    if args.recent:
+        recent_path = Path(args.recent)
+        if recent_path.exists():
+            recent_turns = recent_path.read_text(encoding="utf-8").strip().split("\n")
+
+    result = cultivate(path, sections, recent_turns, recent_window=args.window)
+
+    if result["success"]:
+        saved = result["bytes_before"] - result["bytes_after"]
+        print(f"\n  Gene cultivated")
+        print(f"  Before: {result['bytes_before'] / 1024:.1f}KB")
+        print(f"  After:  {result['bytes_after'] / 1024:.1f}KB")
+        print(f"  Archived: {result['archive_lines']} lines")
+        print(f"  Gene: {result['gene_lines']} lines")
+        print(f"  Backup: {result['backup_path']}")
+        print()
+    else:
+        print(f"  ERROR: cultivation failed", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_retrieve(args):
+    """Retrieve content from the archive."""
+    from .archive import retrieve_lines, retrieve_search, retrieve_context, archive_stats
+    from .session import resolve_session
+
+    path = resolve_session(args.session)
+    stats = archive_stats(path)
+
+    if not stats["exists"]:
+        print(f"  No archive found for this session.", file=sys.stderr)
+        sys.exit(1)
+
+    if args.query:
+        # Search mode
+        results = retrieve_search(path, args.query, max_results=args.max_results)
+        print(f"\n  Archive search: '{args.query}' ({len(results)} results)")
+        print(f"  {'=' * 60}")
+        for r in results:
+            print(f"  Line {r['line']:<6} [{r['type']}] {r['preview'][:80]}")
+        print()
+    elif args.line:
+        # Line retrieval with context
+        results = retrieve_context(path, args.line, context=args.context)
+        print(f"\n  Archive lines around {args.line}:")
+        print(f"  {'=' * 60}")
+        for r in results:
+            marker = " >>>" if r["is_target"] else "    "
+            msg = r["message"]
+            mtype = msg.get("type", "?")
+            content = msg.get("message", {}).get("content", "")
+            if isinstance(content, list):
+                texts = [b.get("text", "")[:100] for b in content if isinstance(b, dict)]
+                content = " ".join(texts)
+            preview = content[:120] if isinstance(content, str) else str(content)[:120]
+            print(f"{marker} {r['line']:<6} [{mtype}] {preview}")
+        print()
+    else:
+        # Stats
+        print(f"\n  Archive: {stats['path']}")
+        print(f"  Lines: {stats['lines']}")
+        print(f"  Size: {stats['bytes'] / 1024:.1f}KB")
+        print()
+
+
 def cmd_eval_run(args):
     """Run full CE-Bench via API."""
     from .eval.api_runner import run_full_benchmark
@@ -298,6 +406,26 @@ def build_parser() -> argparse.ArgumentParser:
     # engineer (points to skill)
     sub.add_parser("engineer", help="Use /crisper:engineer skill instead")
 
+    # GoF cultivation
+    p = sub.add_parser("cultivate-prepare", help="Prepare cultivation data for subagent")
+    p.add_argument("session", help="Session ID, path, or 'current'")
+    p.add_argument("--window", type=int, default=10, help="Recent turns to preserve")
+    p.add_argument("--format", choices=["json", "text"], default="text")
+
+    p = sub.add_parser("cultivate-write", help="Write cultivated gene from subagent output")
+    p.add_argument("session", help="Session to cultivate")
+    p.add_argument("sections", help="Path to JSON file with section contents")
+    p.add_argument("--recent", help="Path to file with recent turn JSONL lines")
+    p.add_argument("--window", type=int, default=10)
+
+    # Archive retrieval
+    p = sub.add_parser("retrieve", help="Retrieve content from the archive")
+    p.add_argument("session", help="Session ID, path, or 'current'")
+    p.add_argument("--query", "-q", help="Search archive for keyword")
+    p.add_argument("--line", "-l", type=int, help="Retrieve specific line number")
+    p.add_argument("--context", "-c", type=int, default=5, help="Lines of context around --line")
+    p.add_argument("--max-results", type=int, default=10, help="Max search results")
+
     # eval-run (API-based, full pipeline)
     p = sub.add_parser("eval-run", help="Run full CE-Bench via API (fair comparison)")
     p.add_argument("workspace", help="CE-Bench workspace path")
@@ -343,6 +471,9 @@ def main():
         "validate": cmd_validate,
         "write": cmd_write,
         "engineer": cmd_engineer,
+        "cultivate-prepare": cmd_cultivate_prepare,
+        "cultivate-write": cmd_cultivate_write,
+        "retrieve": cmd_retrieve,
         "eval-run": cmd_eval_run,
         "eval-prepare": cmd_eval_prepare,
         "eval-ground-truth": cmd_eval_ground_truth,
