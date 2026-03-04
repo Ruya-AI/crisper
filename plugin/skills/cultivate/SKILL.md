@@ -63,18 +63,76 @@ Write the preparation data to `/tmp/crisper_cultivation.json`:
 crisper cultivate-prepare current --format json > /tmp/crisper_cultivation.json
 ```
 
-**CRITICAL: Do NOT rewrite the entire gene. Detect what changed and surgically update ONLY the affected sections.** Untouched sections stay byte-identical — zero risk of context collapse.
+**THREE-STEP CULTIVATION: Analyze → Reflect → Snipe**
 
-Read the preparation data. Analyze the raw tail to detect changes:
-- New decisions → snipe: live_state, dependencies, objectives
-- New files created/modified → snipe: live_state.file_map
-- Errors occurred → snipe: failure_log, live_state.feedback
-- Subgoal completed → snipe: subgoal_tree
-- Decision superseded → snipe: live_state (remove old + add new), failure_log (add abandoned)
-- Phase shifted → snipe: restructure emphasis across affected sections
+Do NOT rewrite the entire gene. The pipeline is:
+
+### Step 3a: ANALYZE (detect what changed)
+Read the preparation data. Identify changes in the raw tail:
+- New decisions → affects: live_state, dependencies, objectives
+- New files created/modified → affects: live_state.file_map
+- Errors occurred → affects: failure_log, live_state.feedback
+- Subgoal completed → affects: subgoal_tree
+- Decision superseded → affects: live_state (remove old + add new), failure_log (add abandoned)
+- Phase shifted → affects: section emphasis
 - Nothing structural → just archive the tail, no section changes
 
-For **first cultivation** (no existing gene): spawn a subagent to produce ALL sections (full bootstrap). For **subsequent cultivations**: only snipe affected sections.
+### Step 3b: REFLECT (evaluate + enrich + augment)
+Spawn a **Task** subagent (the Reflector) with this prompt:
+
+```
+You are the Reflector in a context cultivation pipeline. You evaluate what happened, enrich it with insights, and augment it with relevant knowledge the conversation never contained.
+
+CHANGES DETECTED:
+[paste the change list from step 3a]
+
+CURRENT GENE STATE:
+[paste the affected sections from the gene]
+
+RAW TAIL (new turns):
+[paste the raw tail]
+
+Produce THREE categories of insights:
+
+## EVALUATE (what happened and why)
+- For each decision: WHY was it made? What was the implicit rationale?
+- Patterns: what preferences is the user showing? (simplicity vs scalability, speed vs correctness, etc.)
+- Lessons: what worked, what failed, what should be done differently?
+
+## ENRICH (connect the dots)
+- Cross-references: which decisions relate to which files and topics?
+- Dependency chains: if X changes, what else is affected?
+- Risks: contradictions, technical debt, scaling concerns, security gaps
+- Pattern violations: is a new decision inconsistent with established patterns?
+
+## AUGMENT (bring in knowledge the conversation lacks)
+For each technology/decision in the changes, surface RELEVANT parametric knowledge:
+- Best practices specific to THIS use case (not generic advice)
+- Common pitfalls that apply given the current architecture and stack
+- Code patterns the model should follow for consistency
+- What should be tested given these changes
+- Relevant official documentation links
+- Security considerations if applicable
+- Performance implications if applicable
+
+RULES:
+- Only augment with knowledge DIRECTLY relevant to the current state
+- Mark augmented content as [reflector-augmented]
+- Don't hallucinate links — only reference well-known documentation URLs
+- Be specific to the stack, not generic ("for FastAPI + SQLAlchemy" not "for web apps")
+
+Output as JSON:
+{
+  "evaluate": {"decisions": [...], "patterns": [...], "lessons": [...]},
+  "enrich": {"cross_refs": [...], "dependencies": [...], "risks": [...]},
+  "augment": {"best_practices": [...], "pitfalls": [...], "patterns": [...], "testing": [...], "docs": [...]}
+}
+```
+
+### Step 3c: SNIPE (surgical section updates with reflector insights)
+For **first cultivation** (no existing gene): spawn a subagent to produce ALL sections. For **subsequent cultivations**: only snipe affected sections, enriched with reflector output.
+
+When sniping, pass the reflector's insights to each section's update prompt so the sniper can embed them.
 
 ### First cultivation (bootstrap): spawn subagent for all sections
 
