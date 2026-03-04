@@ -13,7 +13,7 @@ from pathlib import Path
 
 import anthropic
 
-from .rubric import RUBRIC
+from .rubric import COMPACT_RUBRIC as RUBRIC
 
 
 DEFAULT_MODEL = "claude-opus-4-6"

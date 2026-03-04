@@ -28,7 +28,7 @@ from .bench import (
     prepare_ground_truth_prompt,
     prepare_test_prompt,
 )
-from .rubric import RUBRIC, build_judge_prompt
+from .rubric import COMPACT_RUBRIC as RUBRIC, build_judge_prompt
 
 
 def setup_workspace(session_path: Path, workspace: Path | None = None) -> Path:

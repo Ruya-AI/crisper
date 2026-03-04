@@ -134,7 +134,7 @@ def apply_condition_b(session_path: Path, output_dir: Path) -> Path:
 
 def format_comparison_table(results: list[SessionResult]) -> str:
     """Format results as a comparison table."""
-    from .rubric import RUBRIC
+    from .rubric import COMPACT_RUBRIC as RUBRIC
 
     # Aggregate scores per condition per dimension
     agg: dict[str, dict[str, list[float]]] = {}
