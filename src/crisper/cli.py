@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -171,6 +172,26 @@ def cmd_engineer(args):
     print()
 
 
+def cmd_eval_run(args):
+    """Run full CE-Bench via API."""
+    from .eval.api_runner import run_full_benchmark
+
+    ws = Path(args.workspace)
+    conditions = args.conditions.split(",")
+
+    if args.fresh:
+        import glob
+        for pattern in ["answers_*.json", "scores_*.json", "questions.json", "ground_truth.json", "results.json"]:
+            for f in glob.glob(str(ws / pattern)):
+                Path(f).unlink()
+        print("  Cleared existing results for fresh run")
+
+    if args.api_key:
+        os.environ["CRISPER_API_KEY"] = args.api_key
+
+    run_full_benchmark(ws, conditions, model=args.model)
+
+
 def cmd_eval_prepare(args):
     """Prepare CE-Bench workspace for a session."""
     from .eval.runner import prepare_full_benchmark
@@ -277,6 +298,14 @@ def build_parser() -> argparse.ArgumentParser:
     # engineer (points to skill)
     sub.add_parser("engineer", help="Use /crisper:engineer skill instead")
 
+    # eval-run (API-based, full pipeline)
+    p = sub.add_parser("eval-run", help="Run full CE-Bench via API (fair comparison)")
+    p.add_argument("workspace", help="CE-Bench workspace path")
+    p.add_argument("--api-key", help="Anthropic API key (or set CRISPER_API_KEY)")
+    p.add_argument("--model", default="claude-opus-4-6", help="Model for all LLM steps")
+    p.add_argument("--conditions", default="A,B,C,D,E", help="Conditions to test")
+    p.add_argument("--fresh", action="store_true", help="Delete existing answers/scores and re-run")
+
     # eval commands
     p = sub.add_parser("eval-prepare", help="Prepare CE-Bench workspace")
     p.add_argument("session", help="Session ID, path, or 'current'")
@@ -314,6 +343,7 @@ def main():
         "validate": cmd_validate,
         "write": cmd_write,
         "engineer": cmd_engineer,
+        "eval-run": cmd_eval_run,
         "eval-prepare": cmd_eval_prepare,
         "eval-ground-truth": cmd_eval_ground_truth,
         "eval-test": cmd_eval_test,
