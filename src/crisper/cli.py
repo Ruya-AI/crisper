@@ -174,11 +174,27 @@ def cmd_engineer(args):
 
 def cmd_cultivate_prepare(args):
     """Prepare cultivation data for the subagent."""
-    from .cultivator import prepare_cultivation_prompt, is_cultivated
+    from .cultivator import prepare_cultivation_prompt, prepare_chunks, is_cultivated
     from .session import resolve_session
 
     path = resolve_session(args.session)
     cultivated = is_cultivated(path)
+
+    if args.format == "chunks":
+        # v2 pipeline: structural slicing
+        prep = prepare_chunks(path, recent_window=args.window)
+        print(f"\n  CRISPER GoF v2 — Chunk-Based Prep")
+        print(f"  {'=' * 60}")
+        print(f"  Session:     {path.name}")
+        print(f"  Cultivated:  {'yes' if cultivated else 'no (first cultivation)'}")
+        print(f"  Chunks:      {prep['stats']['chunks']}")
+        print(f"  Sacred:      {prep['stats']['sacred_lines']} lines")
+        print(f"  Dropped:     {prep['stats']['dropped']} (progress/snapshots)")
+        print(f"  Archive:     {prep['archive_path']}")
+        print()
+        json.dump(prep, sys.stdout, indent=2)
+        print()
+        return
 
     prep = prepare_cultivation_prompt(path, recent_window=args.window)
 
@@ -462,7 +478,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("cultivate-prepare", help="Prepare cultivation data for subagent")
     p.add_argument("session", help="Session ID, path, or 'current'")
     p.add_argument("--window", type=int, default=10, help="Recent turns to preserve")
-    p.add_argument("--format", choices=["json", "text"], default="text")
+    p.add_argument("--format", choices=["json", "text", "chunks"], default="text")
 
     p = sub.add_parser("cultivate-write", help="Write cultivated gene from subagent output")
     p.add_argument("session", help="Session to cultivate")

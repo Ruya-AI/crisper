@@ -29,14 +29,20 @@ This is the stable project header. Changes here are RARE.
 - Project name and purpose (FIRST — these are the attention sink tokens)
 - Architecture overview
 - Hard constraints
+- Product ideology: what is this product, design principles, philosophy
+- Build ideology: how we build (zero deps, test-first, CI requirements, etc.)
+- Environment summary: runtime, language version, key paths
+- Credentials inventory: names of API keys/tokens referenced (NEVER values)
 - Gene index (section counts, last cultivated timestamp)
 Only update if a fundamental project fact changed.""",
 
     "live_state": """\
 This is the evolving state document. Update aggressively:
 - Decisions: add new, REMOVE superseded, enrich with rationale/alternatives/dependencies
-- File map: current state only (not history), include purpose and key contents
-- Dependency graph: link decisions ↔ files ↔ topics
+- Architecture map: module relationships, data flow, control flow, event/hook patterns
+- File map: current state only, include purpose, key contents, logic, dependencies
+  View from multiple lenses: data flow, control flow, dependency graph
+- Configuration state: current config values, feature flags, settings
 - External feedback: REPLACE with most recent (not a log)
 - Anticipated needs: what will the model need for likely next steps?
 Make this so complete the model never needs to re-read a file or re-ask a question.""",
@@ -54,6 +60,8 @@ Hierarchical goal tracking. Update:
 - Active subgoal: EXPAND with full context, blockers, approach
 - New subgoals: add with brief description
 - Abandoned subgoals: mark and note why
+- Milestones hit: completed milestones with dates/turns
+- Progress metrics: tests passing, features complete, coverage %
 Research: subgoal-based memory doubles success rate (HiAgent, ACL 2025)""",
 
     "compressed_history": """\
@@ -65,6 +73,16 @@ Topic-grouped reference material. This goes in the MIDDLE (lowest attention zone
 - Add lessons learned and cross-references to other topics
 - Include archive breadcrumbs: [archive:LINE-LINE]
 Research: shuffled/topic-based outperforms chronological (Chroma 2025)""",
+
+    "knowledge_base": """\
+Accumulated knowledge that doesn't fit in other sections. This is reference material.
+- Research references: papers, benchmarks, articles cited with key takeaways
+- External docs consulted: API docs, framework docs, with what was learned
+- Internal model knowledge: best practices, patterns, pitfalls surfaced by reflector
+- Documentation requirements: what needs to be documented, API contracts, schemas
+- Testing strategy: what to test, how, coverage targets, test patterns used
+- Permissions and security: access patterns, auth flows, security policies
+Only include what's DIRECTLY relevant to the project. Not a knowledge dump.""",
 
     "breadcrumbs": """\
 Archive index. Add new entries for any content moved to archive.
@@ -167,6 +185,17 @@ def _filter_insights_for_section(section_name: str, insights: dict) -> dict:
         relevant["augmentation"] = [
             item for item in augment.get("items", [])
             if item.get("dimension") == "architecture"
+        ]
+
+    elif section_name == "knowledge_base":
+        relevant["lessons"] = evaluate.get("lessons", [])
+        relevant["cross_references"] = enrich.get("cross_references", [])
+        relevant["augmentation"] = [
+            item for item in augment.get("items", [])
+            if item.get("dimension") in (
+                "best_practices", "docs", "testing", "security",
+                "dependencies", "patterns",
+            )
         ]
 
     return relevant

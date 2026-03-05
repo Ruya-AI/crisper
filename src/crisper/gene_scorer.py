@@ -65,6 +65,8 @@ def score_gene(session_path: Path, turns_since_cultivation: int = 0) -> GeneScor
         r"Decision:", r"Error:", r"File:", r"Rationale:", r"Risk:",
         r"Lesson:", r"Dependency:", r"https?://", r"\.py\b", r"\.js\b",
         r"def \w+", r"class \w+", r"import \w+",
+        r"Research:", r"Testing:", r"Environment:", r"Credential:",
+        r"Architecture:", r"Ideology:", r"Documentation:",
     ]
     total_lines = gene_text.count("\n") + 1
     high_entropy_lines = 0

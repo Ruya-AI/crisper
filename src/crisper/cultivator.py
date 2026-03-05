@@ -38,6 +38,7 @@ SECTION_MARKERS = [
     "Failure Log",
     "Subgoal Tree",
     "Compressed History",
+    "Knowledge Base",
     "Breadcrumbs",
     "Recent Turns",
     "Objectives",
@@ -174,6 +175,7 @@ def build_gene_jsonl(
         ("Failure Log", sections.get("failure_log", "")),
         ("Subgoal Tree", sections.get("subgoal_tree", "")),
         ("Compressed History", sections.get("compressed_history", "")),
+        ("Knowledge Base", sections.get("knowledge_base", "")),
         ("Breadcrumbs", sections.get("breadcrumbs", "")),
     ]
 
@@ -371,6 +373,41 @@ def cultivate(
         "gene_lines": gene_lines,
         "bytes_before": bytes_before,
         "bytes_after": bytes_after,
+    }
+
+
+def prepare_chunks(
+    session_path: Path,
+    recent_window: int = 10,
+) -> dict:
+    """Prepare cultivation data using the structural slicer (v2 pipeline).
+
+    Returns a dict with:
+      - chunks: serialized chunk list for LLM classification
+      - sacred_lines: recent turns to preserve verbatim
+      - session_id: for building the new gene
+      - stats: slicing statistics
+    """
+    from .slicer import slice_session, chunks_to_json
+
+    gene_boundary = find_gene_boundary(session_path)
+    result = slice_session(session_path, gene_boundary, recent_window)
+
+    return {
+        "chunks": chunks_to_json(result.chunks),
+        "sacred_lines": result.sacred_lines,
+        "sacred_start_index": result.sacred_start_index,
+        "session_id": session_path.stem,
+        "session_path": str(session_path),
+        "archive_path": str(get_archive_path(session_path)),
+        "gene_boundary": gene_boundary,
+        "is_cultivated": gene_boundary > 0,
+        "stats": {
+            "total_messages": result.total_messages,
+            "chunks": len(result.chunks),
+            "sacred_lines": len(result.sacred_lines),
+            "dropped": result.dropped_count,
+        },
     }
 
 
