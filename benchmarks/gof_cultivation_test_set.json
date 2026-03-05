@@ -1,0 +1,179 @@
+{
+  "session_id": "3d5b15db-63c1-445b-8bbc-ce973c79310b",
+  "description": "10 questions testing cultivation effectiveness on the Cozempic/Crisper development session. Covers factual recall, implicit decisions, design discussions, error chains, knowledge preservation, security awareness, ideology, preferences, competitive intelligence, and failure-to-lesson chains.",
+  "scoring": {
+    "per_question": "0-5 scale: 0=wrong/missing, 1=vaguely aware, 2=partial, 3=mostly correct with gaps, 4=correct with minor omissions, 5=complete and precise",
+    "pass_threshold": 35,
+    "max_score": 50
+  },
+  "questions": [
+    {
+      "id": "Q1",
+      "dimension": "version_history_and_release_process",
+      "difficulty": "factual",
+      "question": "What was the full version progression of Cozempic during this session, and what 6 channels must stay in sync for each release?",
+      "ground_truth": "Version progression: 0.7.0 → 0.7.1 → 0.7.2 → 0.7.3 → 0.7.4 → 0.7.5 → 0.7.6 → 0.8.0. The 6 channels that must be in sync: GitHub (main), PyPI, GitHub Release, Plugin (plugin.json), Marketplace (marketplace.json), and Local install.",
+      "key_facts": [
+        "8 versions: 0.7.0 through 0.8.0",
+        "6 sync channels: GitHub main, PyPI, GitHub Release, plugin.json, marketplace.json, local install",
+        "0.7.1: output format overhaul (tokens primary)",
+        "0.7.3: context window fix (200K default)",
+        "0.7.4: --session flag for guard",
+        "0.7.5: corrupted tool_use doctor check",
+        "0.7.6: orphaned tool_result fix",
+        "0.8.0: doctor checks, zombie teams, guard watchdog"
+      ],
+      "what_it_tests": "Whether the gene preserves release history and process knowledge"
+    },
+    {
+      "id": "Q2",
+      "dimension": "design_discussion_capture",
+      "difficulty": "implicit",
+      "question": "Why was kill+resume chosen over alternatives for applying cultivation changes to a live session? What were all the options considered, and what insight made one of them the answer?",
+      "ground_truth": "4 options were considered: (1) Kill+resume like cozempic reload — proven but 10s disruption. (2) PreCompact hook — risk that Anthropic's summarizer flattens the 9 sections. (3) Send /compact via tmux/pty — too destructive, /clear wipes everything. (4) Keep the gene small enough that compaction never fires — gene stays ~30-50K, cultivate before reaching the 150K threshold. Option 4 was chosen with the insight: 'if we cultivate frequently enough that the gene + tail never approaches the compaction threshold, we never need to knock out in-memory state during the session.' The Anthropic Context Editing API (beta: clear_tool_uses, clear_thinking) was flagged as a future path for true hot-swap without kill+resume.",
+      "key_facts": [
+        "4 numbered options, not lettered",
+        "Option 1: kill+resume (proven, 10s disruption)",
+        "Option 2: PreCompact hook (risk: summarizer flattens sections)",
+        "Option 3: tmux/pty /compact (too destructive)",
+        "Option 4: gene stays small, compaction never fires (CHOSEN)",
+        "Key insight: cultivate before threshold, avoid the problem entirely",
+        "Future: Anthropic Context Editing API for hot-swap"
+      ],
+      "what_it_tests": "This is THE failure case that prompted the v2 redesign — the v1 gene missed this entire discussion because no 'decided' keywords were used"
+    },
+    {
+      "id": "Q3",
+      "dimension": "paradigm_shift_detection",
+      "difficulty": "implicit",
+      "question": "What was the user's exact statement that shifted Crisper from a compression tool to a cultivation tool, and how did this change what the gene IS?",
+      "ground_truth": "The user said: 'another important thing here to understand that we dont necessarily want to focus on keeping the context smaller, we want to make it the best quality context that is possible to get the next turn to output better than what it would have with the continued conversation. Whatever it takes, research, enrichment, rewrite what ever'. This shifted the gene from being a compressed summary to an enriched living document — the gene should add knowledge (research, rationale, best practices, documentation links) that was NEVER in the raw conversation. The gene can be LARGER than the content it absorbed if that makes it better.",
+      "key_facts": [
+        "Exact quote about 'best quality context' not 'smaller context'",
+        "Gene adds knowledge not in raw conversation",
+        "Gene can be larger than absorbed content",
+        "Enrichment > compression",
+        "Research, links, rationale injected by reflector"
+      ],
+      "what_it_tests": "Whether the gene captures the fundamental philosophical shift — this changes every architectural decision downstream"
+    },
+    {
+      "id": "Q4",
+      "dimension": "product_ideology",
+      "difficulty": "implicit",
+      "question": "Explain the 'Janitor vs Architect' framing used in this session. How does it define the relationship between Cozempic and Crisper, and what was the cross-sell strategy?",
+      "ground_truth": "Cozempic is the 'janitor' — it removes trash/bloat from sessions. Crisper is the 'architect' — it rebuilds remaining context into optimal structure for model output. Exact framing: 'Cozempic is a janitor — remove the bloat. The restructuring tool is an architect — engineer optimal context for better outputs. These attract different audiences with different motivations. Mixing them dilutes both.' This justified making Crisper a separate product, not a Cozempic feature. The cross-sell strategy: after cozempic treatment, recommend crisper ('crisper recommended' prompt). Shared PreCompact hook. Pipeline: Raw → cozempic (prune) → crisper (restructure) → optimal context.",
+      "key_facts": [
+        "Janitor = Cozempic (removes trash)",
+        "Architect = Crisper (restructures what remains)",
+        "Separate products, different audiences",
+        "Cross-sell: post-treatment 'crisper recommended' prompt",
+        "Shared PreCompact hook",
+        "Pipeline: Raw → cozempic → crisper → optimal"
+      ],
+      "what_it_tests": "Product ideology and strategic reasoning — entirely implicit, no decision keywords"
+    },
+    {
+      "id": "Q5",
+      "dimension": "error_chain_completeness",
+      "difficulty": "factual",
+      "question": "Describe the orphaned tool_result bug: what caused it, what was the exact error message users saw, and what was the two-layer fix published in which version?",
+      "ground_truth": "Cause: Cozempic treatment removed tool_use blocks but left their matching tool_result blocks in the next message. The API requires every tool_result to have a corresponding tool_use in the preceding message. Error message: 'unexpected tool_use_id found in tool_result blocks' (400 API error). Two-layer fix: (1) post-treatment validation in run_prescription() that detects and removes orphaned tool_results, (2) a new doctor check that can find and fix orphaned tool_results in any session. Published as v0.7.6.",
+      "key_facts": [
+        "Treatment removed tool_use but left orphaned tool_result",
+        "Error: 'unexpected tool_use_id found in tool_result blocks'",
+        "400 API error",
+        "Fix layer 1: post-treatment validation in run_prescription()",
+        "Fix layer 2: doctor check for orphaned tool_results",
+        "Published as v0.7.6"
+      ],
+      "what_it_tests": "Complete error→cause→fix causal chain with verbatim error message"
+    },
+    {
+      "id": "Q6",
+      "dimension": "security_and_credentials",
+      "difficulty": "cross-cutting",
+      "question": "What credentials exist in this project, how are they stored, and what security concern exists in the session archive?",
+      "ground_truth": "The Anthropic API key (sk-ant-api03-K7ZJ3HWlu4...) is used for CE-Bench evaluation. It's stored in the environment variable CRISPER_API_KEY. Security concern: the full API key appears in at least 7 lines of the session archive (lines 2378, 3299, 3347, 3456, 3459, 3462, 4625) — in user messages providing the key, bash commands setting env vars, and grep commands used during scrubbing. If the archive is ever shared or leaked, the key is exposed. Additionally, competitive strategy files were scrubbed from public git history via filter-branch and moved to private ~/.claude/projects/.../memory/ directory.",
+      "key_facts": [
+        "API key: CRISPER_API_KEY env var",
+        "Key appears in 7 archive lines",
+        "Key is for CE-Bench eval (Anthropic API)",
+        "Strategy files scrubbed from git via filter-branch",
+        "Private files in ~/.claude/projects/.../memory/"
+      ],
+      "what_it_tests": "Credentials inventory and security awareness — cross-cutting concern that regex extractors ignore entirely"
+    },
+    {
+      "id": "Q7",
+      "dimension": "research_knowledge_preservation",
+      "difficulty": "knowledge",
+      "question": "Name the 7 research-backed principles that ground cultivation decisions, with at least 4 paper/source citations.",
+      "ground_truth": "1. Interference, not length, is the enemy (Wang et al. 'Unable to Forget' 2025, p=0.005 for params, p=0.886 for context length). 2. Attention has a cliff — sharp phase transition (Huang et al. 2025). 3. Only 20% of tokens drive reasoning (MI Reasoning Dynamics). 4. Explicit state survives, implicit dies (Anthropic, Manus, TME). 5. Multi-turn reliability degrades 112% — variance not capability (unnamed). 6. Compression improves performance — focused 300 tokens beats 113K unfocused by 30% (Chroma 2025). 7. Different phases need different structures — debugging needs raw errors, summaries cause 13-15% trajectory elongation (JetBrains).",
+      "key_facts": [
+        "7 principles total",
+        "Wang et al.: interference not length",
+        "Huang et al.: attention cliff",
+        "MI Reasoning: 20% drives reasoning",
+        "Chroma: shuffled > coherent, compression helps",
+        "JetBrains: observation masking, 13-15% elongation from summaries",
+        "Liu Lost in the Middle: U-curve attention"
+      ],
+      "what_it_tests": "Whether the knowledge_base section preserves research references with enough detail to be actionable"
+    },
+    {
+      "id": "Q8",
+      "dimension": "user_preferences",
+      "difficulty": "implicit",
+      "question": "Based on this session, what are the user's key working preferences in terms of communication style, quality expectations, and workflow patterns?",
+      "ground_truth": "Communication: terse 1-2 sentence directives, types fast with typos ('pluhin', 'sumbitted'), expects assistant to understand intent without clarification. Frequently interrupts slow work ([Request interrupted by user]). Quality: demands SOTA-grade work ('are all the prompts SOTA grade?'), rejects heuristics ('nothing should be heuristic, we are out of that age'). Workflow: obsessive about version sync across all channels, frequent stats checks (~10 'show me totals' requests — download/star growth as primary motivation), explicit checkpoint requests ('save the session and work and everything'). Dislikes waste: 'we never want to rewrite everything, its wasteful and error prone'. Favors intelligence over rules. Prefers separate products over feature bloat.",
+      "key_facts": [
+        "Terse directives, fast typing with typos",
+        "Interrupts when slow",
+        "Demands SOTA quality",
+        "Nothing heuristic",
+        "Version sync obsession (6 channels)",
+        "Frequent stats checks (~10 times)",
+        "Explicit checkpoint requests",
+        "Dislikes waste/full-rewrites",
+        "Separate products over feature bloat"
+      ],
+      "what_it_tests": "Preference signals inferred from behavior patterns — pure implicit extraction"
+    },
+    {
+      "id": "Q9",
+      "dimension": "competitive_intelligence",
+      "difficulty": "factual",
+      "question": "What are the exact CE-Bench overall scores for all 5 conditions, and what was done to protect competitive strategy from being public?",
+      "ground_truth": "Final CE-Bench scores (5-section, pre-GoF): Raw 2.46, Cozempic 2.32, /compact 3.41, Factory 3.52, Crisper 4.21. Crisper beats Factory by +0.69. Cache friendliness: Crisper 5.00 (perfect). To protect competitive intelligence: strategy files (PLAN.md, CE-BENCH.md, research/ with 7 paper extractions, strategy notes) were moved from the git repo to private ~/.claude/projects/.../memory/ directory. Git history was purged via filter-branch to remove traces. The public repo contains source code, benchmarks/results, and paper/draft but not internal strategy documents.",
+      "key_facts": [
+        "Raw: 2.46",
+        "Cozempic: 2.32",
+        "/compact: 3.41",
+        "Factory: 3.52",
+        "Crisper: 4.21",
+        "Crisper beats Factory by +0.69",
+        "Files moved to private memory dir",
+        "Git history purged with filter-branch",
+        "Public: source + benchmarks. Private: strategy + research"
+      ],
+      "what_it_tests": "Precise metric recall and strategic decision preservation"
+    },
+    {
+      "id": "Q10",
+      "dimension": "failure_to_lesson_chain",
+      "difficulty": "applied",
+      "question": "What happened when the CE-Bench Condition E subagent was asked to generate a full 5-section JSONL in one prompt? What architectural lesson did this teach, and how is it reflected in the GoF pipeline design?",
+      "ground_truth": "The subagent got stuck — it couldn't complete the task because building a large structured JSONL with proper uuid chaining, 56 file paths, 55 decisions, and recent turns copied verbatim was too complex for a single prompt. The task had to be done directly by the orchestrator instead. Architectural lesson: complex generation tasks must be chunked into smaller, focused steps rather than given as monolithic prompts. This directly influenced the GoF pipeline design: instead of one subagent doing everything, the pipeline was split into Slice → Classify → Reflect → Synthesize → Review — each step focused on one thing. The v2 pipeline further reinforces this with classification batches (~20 chunks per batch) rather than feeding everything at once.",
+      "key_facts": [
+        "Subagent got stuck on Condition E",
+        "Too complex: uuid chaining + 56 files + 55 decisions + verbatim recent turns",
+        "Had to generate directly instead",
+        "Lesson: chunk complex work into focused steps",
+        "Influenced GoF: Analyze→Reflect→Snipe pipeline",
+        "v2 reinforces: classification batches of ~20 chunks"
+      ],
+      "what_it_tests": "Whether failed_attempt→lesson→applied_learning chain is preserved end-to-end"
+    }
+  ]
+}
